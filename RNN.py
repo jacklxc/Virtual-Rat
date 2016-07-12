@@ -2,13 +2,12 @@ import numpy as np
 from VirtualRatFunctions import *
 
 class FirstRNN(object):
-    def __init__(self, N=1, input_dim=3, output_dim=3, hidden_dim=10, dtype=np.float32):
-        self.data = None
+    def __init__(self, N=1, input_dim=3, output_dim=3, hidden_dim=100, dtype=np.float32):
         self.dtype = dtype
         self.params = {}
 
         # Initializa h0
-        self.params['h0'] = np.zeros((N, hidden_dim)) 
+        self.params['h0'] = np.zeros((N, hidden_dim))
 
         # Initialize parameters for the RNN
         self.params['Wx'] = np.random.randn(output_dim, hidden_dim)
@@ -62,7 +61,7 @@ class FirstRNN(object):
         return loss, grads
 
 
-    def sample(self, x, max_length=3):
+    def sample(self, x):
         """
         Run a test-time forward pass for the model, sampling captions for input
         feature vectors.
@@ -75,7 +74,7 @@ class FirstRNN(object):
         token.
 
         Inputs:
-        - signal: Array of input signal features of shape (N, D).
+        - x: Array of input signal features of shape (N, D).
         - max_length: Maximum length T of generated captions.
 
         Returns:
@@ -83,16 +82,17 @@ class FirstRNN(object):
           where each element is an integer in the range [0, V). The first element
           of captions should be the first sampled word, not the <START> token.
         """
-        N = x.shape[0]
-        captions = np.ones((N, max_length), dtype=np.int32) ########
+        N, T, _ = x.shape
+
+        captions = np.ones((N, T), dtype=np.int32) ########
 
         # Unpack parameters
         h = self.params['h0']
         Wx, Wh, b = self.params['Wx'], self.params['Wh'], self.params['b']
         W_vocab, b_vocab = self.params['W_vocab'], self.params['b_vocab']
 
-        for t in range(max_length):
-            h, _ = rnn_step_forward(x, h, Wx, Wh, b)
+        for t in range(T):
+            h, _ = rnn_step_forward(x[:,t,:], h, Wx, Wh, b)
             scores, _ = affine_forward(h,W_vocab,b_vocab)
             p = np.exp(scores)/np.sum(np.exp(scores))
             max_word = np.argmax(p,axis = 1)        
