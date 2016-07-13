@@ -2,6 +2,14 @@ from helpers import DBUtilsClass as db
 import numpy as np
 
 def getData():
+    """
+    Get data from MySQL database
+
+    Returns:
+    -allRatsData: a dictionary with rat names as keys and numpy boolean array of 
+    shape N * T * D as elements. In dimention 2, the bits represent pro_rule,
+    target_on_right, trial_n=1, left, right, cpv (central poke violation) respectively.
+    """
     CONN = db.Connection()
     CONN.use('pa')
     out = zip(*CONN.query('explain alldata'))
@@ -300,24 +308,21 @@ def temporal_affine_backward(dout, cache):
 def temporal_softmax_loss(x, y, mask, verbose=False):
     """
     A temporal version of softmax loss for use in RNNs. We assume that we are
-    making predictions over a vocabulary of size V for each timestep of a
+    making predictions over a vocabulary (choices) of size V (V = 3) for each timestep of a
     timeseries of length T, over a minibatch of size N. The input x gives scores
     for all vocabulary elements at all timesteps, and y gives the indices of the
     ground-truth element at each timestep. We use a cross-entropy loss at each
     timestep, summing the loss over all timesteps and averaging across the
     minibatch.
 
-    As an additional complication, we may want to ignore the model output at some
-    timesteps, since sequences of different length may have been combined into a
-    minibatch and padded with NULL tokens. The optional mask argument tells us
-    which elements should contribute to the loss.
-
     Inputs:
     - x: Input scores, of shape (N, T, V)
     - y: Ground-truth indices, of shape (N, T) where each element is in the range
        0 <= y[i, t] < V
     - mask: Boolean array of shape (N, T) where mask[i, t] tells whether or not
-    the scores at x[i, t] should contribute to the loss.
+    the scores at x[i, t] should contribute to the loss. This variable is not necessary.
+    Might be removed later
+
 
     Returns a tuple of:
     - loss: Scalar giving loss

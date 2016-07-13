@@ -1,6 +1,58 @@
 import numpy as np
 import optim
 class RNNsolver(object):
+    """
+    An RNNsolver encapsulates all the logic necessary for training
+    image captioning models. The CaptioningSolver performs stochastic gradient
+    descent using different update rules defined in optim.py.
+
+    The solver accepts both training and validataion data and labels so it can
+    periodically check classification accuracy on both training and validation
+    data to watch out for overfitting.
+
+    To train a model, you will first construct an RNNsolver instance,
+    passing the model, dataset, and various options (learning rate, etc) 
+    to the constructor. You will then call the train() method to run the 
+    optimization procedure and train the model.
+
+    After the train() method returns, model.params will contain the parameters
+    that performed best on the validation set over the course of training.
+    In addition, the instance variable solver.loss_history will contain a list
+    of all losses encountered during training and the instance variables
+    solver.train_acc_history and solver.val_acc_history will be lists containing
+    the accuracies of the model on the training and validation set at each epoch.
+
+    Example usage might look something like this:
+
+    model = MyAwesomeModel(hidden_dim=100)
+    solver = CaptioningSolver(model, data,
+                  update_rule='sgd',
+                  optim_config={
+                    'learning_rate': 1e-3,
+                  },
+                  lr_decay=0.95,
+                  num_epochs=10, batch_size=100,
+                  print_every=100)
+    solver.train()
+
+
+    An RNNsolver works on a model object that must conform to the following
+    API:
+
+    - model.params must be a dictionary mapping string parameter names to numpy
+    arrays containing parameter values.
+
+    - model.loss(features, captions) must be a function that computes
+    training-time loss and gradients, with the following inputs and outputs:
+
+    Inputs:
+    - x: Input data of shape (N, T, D)
+    - y: Ground truth output of shape (N, T, O)
+
+    Returns a tuple of:
+    - loss: Scalar loss
+    - grads: Dictionary of gradients parallel to self.params
+    """
     def __init__(self, model, X, y, **kwargs):
         self.model = model
         self.X = X

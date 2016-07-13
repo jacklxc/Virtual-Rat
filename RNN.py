@@ -2,7 +2,24 @@ import numpy as np
 from VirtualRatFunctions import *
 
 class FirstRNN(object):
+    """
+    This is the first virtual rat RNN that simulates rats' behavior in Duan et. al's paper.
+
+    In each cycle, the RNN receives input vectors of size D and returns an index that indicates
+    left, right or cpv (center poke violation).
+    """
     def __init__(self, N=1, input_dim=3, output_dim=3, hidden_dim=100, dtype=np.float32):
+        """
+        Construct a new FirstRNN instance.
+
+        Inputs:
+        - N: Number of simultaneously trained virtual rat.
+        - input_dim: Dimension D of input signal vectors.
+        - output_dim: Dimension O of output signal vectors.
+        - hidden_dim: Dimension H for the hidden state of the RNN.
+        - dtype: numpy datatype to use; use float32 for training and float64 for
+          numeric gradient checking.
+        """
         self.dtype = dtype
         self.params = {}
 
@@ -25,15 +42,21 @@ class FirstRNN(object):
         for k, v in self.params.iteritems():
             self.params[k] = v.astype(self.dtype)
 
-    def loss(self, x, captions):
+    def loss(self, x, y):
         """
-        Inputs:
-        - x: Input data of shape (N, T, input_dim)
-        - captions: Ground truth output of shape (N, T, output_dim)
-        """
-        captions = captions.astype(int)
+        Compute training-time loss for the RNN.
 
-        mask = np.ones(captions.shape)
+        Inputs:
+        - x: Input data of shape (N, T, D)
+        - y: Ground truth output of shape (N, T, O)
+
+        Returns a tuple of:
+        - loss: Scalar loss
+        - grads: Dictionary of gradients parallel to self.params
+        """
+        y = y.astype(int)
+
+        mask = np.ones(y.shape)
 
         # Input-to-hidden, hidden-to-hidden, and biases for the RNN
         Wx, Wh, b = self.params['Wx'], self.params['Wh'], self.params['b']
@@ -50,7 +73,7 @@ class FirstRNN(object):
 
         scores, cache_scores = temporal_affine_forward(h, W_vocab, b_vocab)
 
-        loss, dscores = temporal_softmax_loss(scores, captions, mask)
+        loss, dscores = temporal_softmax_loss(scores, y, mask)
 
         # Back prop
         dh, grads['W_vocab'],grads['b_vocab'] = temporal_affine_backward(dscores,cache_scores)
@@ -61,30 +84,26 @@ class FirstRNN(object):
         return loss, grads
 
 
-    def sample(self, x):
+    def predict(self, x):
         """
-        Run a test-time forward pass for the model, sampling captions for input
-        feature vectors.
+        Run a test-time forward pass for the model, predicting for input x.
 
-        At each timestep, we embed the current word, pass it and the previous hidden
+        At each timestep, we embed a new input verctor, pass it and the previous hidden
         state to the RNN to get the next hidden state, use the hidden state to get
-        scores for all vocab words, and choose the word with the highest score as
-        the next word. The initial hidden state is computed by applying an affine
-        transform to the input image features, and the initial word is the <START>
-        token.
+        scores for all choices, and choose the one with the highest score to output.
+        The initial hidden state is computed by applying an affine
+        transform to the input vectors.
 
         Inputs:
         - x: Array of input signal features of shape (N, D).
-        - max_length: Maximum length T of generated captions.
 
         Returns:
-        - captions: Array of shape (N, max_length) giving sampled captions,
-          where each element is an integer in the range [0, V). The first element
-          of captions should be the first sampled word, not the <START> token.
+        - y: Array of shape (N, T) giving sampled y,
+          where each element is an integer in the range [0, V). 
         """
         N, T, _ = x.shape
 
-        captions = np.ones((N, T), dtype=np.int32) ########
+        y = -np.zeros((N, T), dtype=np.int32) 
 
         # Unpack parameters
         h = self.params['h0']
@@ -96,9 +115,9 @@ class FirstRNN(object):
             scores, _ = affine_forward(h,W_vocab,b_vocab)
             p = np.exp(scores)/np.sum(np.exp(scores))
             max_word = np.argmax(p,axis = 1)        
-            captions[:,t] = max_word
+            y[:,t] = max_word
 
-        return captions
+        return y
 
 
 
