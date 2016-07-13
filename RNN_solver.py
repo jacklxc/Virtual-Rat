@@ -63,9 +63,9 @@ class RNNsolver(object):
         self.optim_config = kwargs.pop('optim_config', {})
         self.lr_decay = kwargs.pop('lr_decay', 1.0)
         self.batch_size = kwargs.pop('batch_size', 1)
-        self.num_epochs = kwargs.pop('num_epochs', 100)
+        self.num_epochs = kwargs.pop('num_epochs', 500)
 
-        self.print_every = kwargs.pop('print_every', 1)
+        self.print_every = kwargs.pop('print_every', 10)
         self.verbose = kwargs.pop('verbose', True)
 
         # Throw an error if there are extra keyword arguments

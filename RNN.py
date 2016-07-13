@@ -8,7 +8,7 @@ class FirstRNN(object):
     In each cycle, the RNN receives input vectors of size D and returns an index that indicates
     left, right or cpv (center poke violation).
     """
-    def __init__(self, N=1, input_dim=3, output_dim=3, hidden_dim=100, dtype=np.float32):
+    def __init__(self, N=1, input_dim=3, output_dim=3, hidden_dim=5, dtype=np.float32):
         """
         Construct a new FirstRNN instance.
 

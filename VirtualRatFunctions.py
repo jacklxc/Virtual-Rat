@@ -1,7 +1,8 @@
 from helpers import DBUtilsClass as db
 import numpy as np
+import cPickle as pkl
 
-def getData():
+def getData(num_rats):
     """
     Get data from MySQL database
 
@@ -17,7 +18,7 @@ def getData():
 
     allRatsData = {}
 
-    for rat in all_rats:
+    for rat in all_rats[:num_rats]:
         sqlstr=('select pro_rule, target_on_right, trial_n=1, '
                 '(cpv=0 AND WR=0) as `left`, (cpv=0 AND WR = 1) as `right`, cpv '
                 'from pa.alldata where ratname=%s order by sessid, trial_n')
@@ -27,6 +28,26 @@ def getData():
         allRatsData[str(rat[0])] = data
         print rat[0], data.shape
     return allRatsData
+
+def uploadRNN(model, ratname, comments, train_size, test_size, loss, lr, input_dim, acc):
+    dbc = db.Connection()
+    D = {}
+    D['ratname'] = ratname
+    D['train_size'] = train_size
+    D['test_size'] = test_size
+    D['loss'] = loss
+    D['learning_rate'] = lr
+    D['hidden_dim'] = input_dim
+    D['accuracy'] = acc
+    D['comments'] = comments
+    D['b'] = pkl.dumps(model.params['b'])
+    D['b_vocab'] = pkl.dumps(model.params['b_vocab'])
+    D['W_vocab'] = pkl.dumps(RNN.params['W_vocab'])
+    D['h0'] = pkl.dumps(RNN.params['h0'])
+    D['Wh'] = pkl.dumps(RNN.params['Wh'])
+    D['Wx'] = pkl.dumps(RNN.params['Wx'])
+
+    dbc.saveToDB('vrat.rnn',D)
 
 def affine_forward(x, w, b):
     """
@@ -348,8 +369,3 @@ def temporal_softmax_loss(x, y, mask, verbose=False):
     dx = dx_flat.reshape(N, T, V)
 
     return loss, dx
-
-
-
-
-
