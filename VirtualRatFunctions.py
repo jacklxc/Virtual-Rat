@@ -29,25 +29,28 @@ def getData(num_rats):
         print rat[0], data.shape
     return allRatsData
 
-def uploadRNN(model, ratname, comments, train_size, test_size, loss, lr, input_dim, acc):
+def uploadRNN(solver, ratname, comments, test_size, lr, hidden_dim, acc):
     dbc = db.Connection()
     D = {}
+
+    model = solver.model
+
     D['ratname'] = ratname
-    D['train_size'] = train_size
+    D['train_size'] = solver.X.shape[1]
     D['test_size'] = test_size
-    D['loss'] = loss
-    D['learning_rate'] = lr
-    D['hidden_dim'] = input_dim
-    D['accuracy'] = acc
+    D['loss'] = float(solver.loss_history[-1])
+    D['hidden_dim'] = hidden_dim
+    D['accuracy'] = float(acc)
+    D['learning_rate'] = float(lr)
     D['comments'] = comments
     D['b'] = pkl.dumps(model.params['b'])
     D['b_vocab'] = pkl.dumps(model.params['b_vocab'])
-    D['W_vocab'] = pkl.dumps(RNN.params['W_vocab'])
-    D['h0'] = pkl.dumps(RNN.params['h0'])
-    D['Wh'] = pkl.dumps(RNN.params['Wh'])
-    D['Wx'] = pkl.dumps(RNN.params['Wx'])
+    D['W_vocab'] = pkl.dumps(model.params['W_vocab'])
+    D['h0'] = pkl.dumps(model.params['h0'])
+    D['Wh'] = pkl.dumps(model.params['Wh'])
+    D['Wx'] = pkl.dumps(model.params['Wx'])
 
-    dbc.saveToDB('vrat.rnn',D)
+    print dbc.saveToDB('vrat.rnn',D)
 
 def affine_forward(x, w, b):
     """

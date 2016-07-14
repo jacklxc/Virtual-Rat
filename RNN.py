@@ -100,10 +100,16 @@ class FirstRNN(object):
         Returns:
         - y: Array of shape (N, T) giving sampled y,
           where each element is an integer in the range [0, V). 
+        - probs: Array of shape (N, T, DD) giving the probability of each choice,
+          where each element is a float. 
         """
-        N, T, _ = x.shape
+        N, T, _= x.shape
 
-        y = -np.zeros((N, T), dtype=np.int32) 
+        DD = 3 # index 0 is the prob to choose left, 1 is the prob 
+               # to choose right, 2 is cpv.
+
+        y = np.zeros((N, T), dtype=np.int32) 
+        probs = np.zeros((N, T, DD))
 
         # Unpack parameters
         h = self.params['h0']
@@ -116,8 +122,8 @@ class FirstRNN(object):
             p = np.exp(scores)/np.sum(np.exp(scores))
             max_word = np.argmax(p,axis = 1)        
             y[:,t] = max_word
-
-        return y
+            probs[:,t,:] = p
+        return y, probs
 
 
 
