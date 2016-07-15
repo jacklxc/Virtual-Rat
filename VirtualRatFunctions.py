@@ -2,7 +2,7 @@ from helpers import DBUtilsClass as db
 import numpy as np
 import cPickle as pkl
 
-def getData(num_rats):
+def getData(num_rats=15):
     """
     Get data from MySQL database
 
@@ -17,6 +17,9 @@ def getData(num_rats):
     all_rats = CONN.query('select distinct(ratname) from pa.alldata')
 
     allRatsData = {}
+
+    if num_rats > len(all_rats):
+    	num_rats = 15
 
     for rat in all_rats[:num_rats]:
         sqlstr=('select pro_rule, target_on_right, trial_n=1, '
@@ -51,6 +54,110 @@ def uploadRNN(solver, ratname, comments, test_size, lr, hidden_dim, acc):
     D['Wx'] = pkl.dumps(model.params['Wx'])
 
     print dbc.saveToDB('vrat.rnn',D)
+
+def processData(allRatsData):
+	"""
+	Divide each rat's data into train, validation and test data for RNN
+
+	Inputs:
+	- allRatsData: a dictionary with rat names as keys and numpy boolean array of 
+    shape N * T * D as elements. In dimention 2, the bits represent pro_rule,
+    target_on_right, trial_n=1, left, right, cpv (central poke violation) respectively.
+
+    Returns:
+    - data: a dictionary with rat names as keys and dictionaries as elements.
+    	Each sub-level dictionary contains the following:
+    	- 'trainX': Stimulus to the rat for training.
+    	- 'valX': Stimulus to the rat for validation.
+    	- 'testX': Stimulus to the rat for test.
+    	- 'trainY': Reactions of the rat for training.
+    	- 'valY': Reactions of the rat for validation.
+    	- 'testY': Reactions of the rat for test.
+    	- 'trainTrueY': Rational reactions (logically correct reactions) for training.
+    	- 'valTrueY': Rational reactions (logically correct reactions) for validation.
+    	- 'testTrueY': Rational reactions (logically correct reactions) for test.
+	"""
+	data = {}
+
+	train_percentile = 0.8
+	val_percentile = 0.9
+
+	for ratname in allRatsData.keys():
+		data[ratname] = {}
+		rat_data = data[ratname]
+		rat = allRatsData[ratname]
+		x = np.zeros((1, rat.shape[0], 3))
+		y = np.zeros((1, rat.shape[0]))
+		trueY = np.zeros((1, rat.shape[0]))
+
+		x[0,:,:] = rat[:,:3]
+
+		train_num = int(rat.shape[0] * train_percentile)
+		val_num = int(rat.shape[0] * val_percentile)
+
+		# Stimulus to rats
+		rat_data['trainX'] = x[:,:train_num,:]
+		rat_data['valX'] = x[:,train_num:val_num,:]
+		rat_data['testX'] = x[:,val_num:,:]
+
+		# Reaction of rats
+		y[0,rat[:,3]>0] = 0
+		y[0,rat[:,4]>0] = 1
+		y[0,rat[:,5]>0] = 2
+
+		rat_data['trainY'] = y[:,:train_num]
+		rat_data['valY'] = y[:,train_num:val_num]
+		rat_data['testY'] = y[:,val_num:]
+
+		# Rational reaction (logically correct)
+		trueY[0,:] = np.logical_not(np.bitwise_xor(rat[:,0],rat[:,1]))
+		rat_data['trainTrueY'] = trueY[:,:train_num]
+		rat_data['valTrueY'] = trueY[:,train_num:val_num]
+		rat_data['testTrueY'] = trueY[:,val_num:]
+
+	return data
+
+def postRNNdataProcessing(probabilities, allRatsData):
+	postRNNdata = {}
+	for ratname in probabilities:
+		postRNNdata[ratname] = {}
+		ratProbs = postRNNdata[ratname]
+
+		probs = probabilities[ratname]
+		rat_data = allRatsData[ratname]
+
+		normalized_probs = np.zeros((probs.shape[0],probs.shape[1],probs.shape[2]-1))
+		normalized_probs[:,:,0] = probs[:,:,0]/(probs[:,:,0] + probs[:,:,1])
+		normalized_probs[:,:,1] = probs[:,:,1]/(probs[:,:,0] + probs[:,:,1])
+		postRNNdata['normalized_probs'] = normalized_probs
+
+		hit_rate = np.zeros(probs.shape[1])
+		right = rat_data['valTrueY'][0,:] == 1
+		left = rat_data['valTrueY'][0,:] == 0
+		hit_rate[left] = normalized_probs[0,left,0]
+		hit_rate[right] = normalized_probs[0,right,1]
+		postRNNdata['hit_rate'] = hit_rate
+
+		switches = []
+		pro_rule = 0
+		for i in xrange(rat_data['valX'].shape[1]):
+		    if rat_data['valX'][0,i,0] != pro_rule:
+		        switches.append(i)
+		        pro_rule = rat_data['valX'][0,i,0]
+		postRNNdata['switches'] = switches
+
+		pro_rules = rat_data['valX'][0,:,0]
+		postRNNdata['pro_rules'] = pro_rules
+
+		pro_prob = np.copy(hit_rate)
+		anti_prob = np.copy(hit_rate)
+		pro_rules = pro_rules.astype(bool)
+		pro_prob[np.logical_not(pro_rules)] = None
+		anti_prob[pro_rules] = None
+		postRNNdata['pro_prob'] = pro_prob
+		postRNNdata['anti_prob'] = anti_prob
+
+	return postRNNdata
 
 def affine_forward(x, w, b):
     """
