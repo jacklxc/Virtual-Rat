@@ -16,6 +16,8 @@ def getData(num_rats=15):
     out = zip(*CONN.query('explain alldata'))
     all_rats = CONN.query('select distinct(ratname) from pa.alldata')
 
+    MIN_PERF = 70;
+
     allRatsData = {}
 
     if num_rats > len(all_rats):
@@ -24,7 +26,8 @@ def getData(num_rats=15):
     for rat in all_rats[:num_rats]:
         sqlstr=('select pro_rule, target_on_right, trial_n=1, '
                 '(cpv=0 AND WR=0) as `left`, (cpv=0 AND WR = 1) as `right`, cpv '
-                'from pa.alldata where ratname=%s order by sessid, trial_n')
+                'from pa.alldata a, pa.pasess b where a.sessid=b.sessid '
+                'and pro_perf>{} and anti_perf>{} and b.ratname=%s order by a.sessid, trial_n').format(MIN_PERF, MIN_PERF)
 
         out = CONN.query(sqlstr, (str(rat[0]),))
         data = np.array(out)
@@ -133,9 +136,9 @@ def postProcess(probabilities, allRatsData, trial_window = 3):
         Each sub-level dictionary contains the following:
         -'normalized_probs': numpy float array of shape (N * T * 2). Probablities that discarded cpv and normalized only for left and right.
         -'hit_rate': numpy float array of shape (T,). Correct probability for each trial (discard cpv).
-        - 'switches': python int list that contains the trial number that switches pro_rule.
-        - 'p2a_switch': python int list that contains the trial number that switches pro_rule form "pro" to "anti".
-        - 'a2p_switch': python int list that contains the trial number that switches pro_rule form "anti" to "pro". 
+        - 'switches': numpy int array that contains the trial number that switches pro_rule.
+        - 'p2a_switch': numpy int array that contains the trial number that switches pro_rule form "pro" to "anti".
+        - 'a2p_switch': numpy int array that contains the trial number that switches pro_rule form "anti" to "pro". 
         - 'pro_rules': a numpy bool array of shape (T,). Contains the pro_rule for each trial.
         - 'pro_prob': a numpy float array that only contains the probability of correct orientation under "pro" rule.
             At those indices (trials) that is under "anti" rules, the element is None.
@@ -182,9 +185,9 @@ def postProcess(probabilities, allRatsData, trial_window = 3):
                         p2a_switch.append(i)
                     else:
                         a2p_switch.append(i)
-        ratProbs['switches'] = switches
-        ratProbs['p2a_switch'] = p2a_switch
-        ratProbs['a2p_switch'] = a2p_switch
+        ratProbs['switches'] = np.asarray(switches)
+        ratProbs['p2a_switch'] = np.asarray(p2a_switch)
+        ratProbs['a2p_switch'] = np.asarray(a2p_switch)
 
         pro_rules = rat_data['valX'][0,:,0]
         ratProbs['pro_rules'] = pro_rules
@@ -208,8 +211,6 @@ def postProcess(probabilities, allRatsData, trial_window = 3):
 def calculatePerformance(switch_index, hit_rate, trial_window):
     switch_prob = np.zeros(trial_window*2+1) 
     # index i --> trial from switch = -trial_window + i
-    switch_prob = np.zeros((2*trial_window+1))
-
     for i in switch_index:
         switch_prob += hit_rate[i-trial_window:i+trial_window+1]
     switch_prob /= len(switch_index)
@@ -225,6 +226,45 @@ def meanPerformance(postRNNdata):
     p2a_mean /= len(postRNNdata)
     a2p_mean /= len(postRNNdata)
     return p2a_mean, a2p_mean
+
+def realRatMeanPerformance(preData, postRNNdata, trial_window = 3):
+    normalizedY = {}
+    for ratname in preData.keys():
+        rat = preData[ratname]
+        normalizedY[ratname] = {}
+        cpv = (rat['valY'][0,:] == 2)
+        hit_trials = (rat['valY'][0,:] == rat['valTrueY'][0,:])
+        hit = np.zeros(rat['valY'].shape[1])
+        hit[hit_trials] = 1
+        hit[cpv] = np.nan
+
+        normalizedY[ratname]['hit'] = hit
+
+        p2a_switch = postRNNdata[ratname]['p2a_switch']
+        p2a_matrix = np.zeros((len(p2a_switch), trial_window * 2 + 1))
+        for i in xrange(len(p2a_switch)):
+            p2a_matrix[i,:] = hit[(p2a_switch[i] - trial_window): (p2a_switch[i] + trial_window + 1)]
+        p2a = np.nanmean(p2a_matrix,axis=0)
+        normalizedY[ratname]['p2a'] = p2a
+
+        a2p_switch = postRNNdata[ratname]['a2p_switch']
+        a2p_matrix = np.zeros((len(a2p_switch), trial_window * 2 + 1))
+        for i in xrange(len(a2p_switch)):
+            a2p_matrix[i,:] = hit[(a2p_switch[i] - trial_window): (a2p_switch[i] + trial_window + 1)]
+        a2p = np.nanmean(a2p_matrix,axis=0)
+        normalizedY[ratname]['a2p'] = a2p
+    
+    # Compute the grand mean
+    p2a_mean = np.zeros(trial_window*2+1)
+    a2p_mean = np.zeros(trial_window*2+1)
+    for ratname in normalizedY.keys():
+        p2a_mean += normalizedY[ratname]['p2a']
+        a2p_mean += normalizedY[ratname]['a2p']
+    p2a_mean /= len(normalizedY)
+    a2p_mean /= len(normalizedY)
+
+    return p2a_mean, a2p_mean
+
 
 def affine_forward(x, w, b):
     """
