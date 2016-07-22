@@ -91,6 +91,7 @@ class RNNsolver(object):
         self.best_val_acc = 0
         self.best_params = {}
         self.loss_history = []
+        self.average_loss_history = []
         self.train_acc_history = []
         self.val_acc_history = []
 
@@ -108,8 +109,9 @@ class RNNsolver(object):
 
         # Compute loss and gradient
         loss, grads = self.model.loss(self.X, self.y) 
+        average_loss = loss / self.y.shape[1]
         self.loss_history.append(loss)
-
+        self.average_loss_history.append(average_loss)
         # Perform a parameter update
         for p, w in self.model.params.iteritems():
             dw = grads[p]
@@ -131,8 +133,9 @@ class RNNsolver(object):
 
             # Maybe print training loss
             if self.verbose and t % self.print_every == 0:
-                print '(Iteration %d / %d) loss: %f' % (
-                    t + 1, num_iterations, self.loss_history[-1])
+                print '(Iteration %d / %d) loss: %f, average loss: %f' % (
+                    t + 1, num_iterations, self.loss_history[-1], 
+                    self.average_loss_history[-1])
 
             # At the end of every epoch, increment the epoch counter and decay the
             # learning rate.

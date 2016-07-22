@@ -58,7 +58,7 @@ def uploadRNN(solver, ratname, comments, test_size, lr, hidden_dim, acc):
 
     print dbc.saveToDB('vrat.rnn',D)
 
-def preProcess(allRatsData):
+def preProcess(allRatsData, ratnames=[]):
     """
     Divide each rat's data into train, validation and test data for RNN
 
@@ -85,7 +85,12 @@ def preProcess(allRatsData):
     train_percentile = 0.8
     val_percentile = 0.9
 
-    for ratname in allRatsData.keys():
+    if len(ratnames) > 0:
+        allratnames = ratnames
+    else:
+        allratnames = allRatsData.keys()
+
+    for ratname in allratnames:
         data[ratname] = {}
         rat_data = data[ratname]
         rat = allRatsData[ratname]
@@ -99,6 +104,7 @@ def preProcess(allRatsData):
         val_num = int(rat.shape[0] * val_percentile)
 
         # Stimulus to rats
+        rat_data['X'] = x
         rat_data['trainX'] = x[:,:train_num,:]
         rat_data['valX'] = x[:,train_num:val_num,:]
         rat_data['testX'] = x[:,val_num:,:]
@@ -108,19 +114,21 @@ def preProcess(allRatsData):
         y[0,rat[:,4]>0] = 1
         y[0,rat[:,5]>0] = 2
 
+        rat_data['y'] = y
         rat_data['trainY'] = y[:,:train_num]
         rat_data['valY'] = y[:,train_num:val_num]
         rat_data['testY'] = y[:,val_num:]
 
         # Rational reaction (logically correct)
         trueY[0,:] = np.logical_not(np.bitwise_xor(rat[:,0],rat[:,1]))
+        rat_data['trueY'] = trueY
         rat_data['trainTrueY'] = trueY[:,:train_num]
         rat_data['valTrueY'] = trueY[:,train_num:val_num]
         rat_data['testTrueY'] = trueY[:,val_num:]
 
     return data
 
-def postProcess(probabilities, allRatsData, trial_window = 3):
+def postProcess(choices, probabilities, allRatsData, trial_window = 3):
     """
     Process data generated from RNN. 
 
@@ -151,7 +159,7 @@ def postProcess(probabilities, allRatsData, trial_window = 3):
             (index i --> trial from switch = -trial_window + i)
     """
     postRNNdata = {}
-    for ratname in probabilities:
+    for ratname in probabilities.keys():
         postRNNdata[ratname] = {}
         ratProbs = postRNNdata[ratname]
 
@@ -163,12 +171,23 @@ def postProcess(probabilities, allRatsData, trial_window = 3):
         normalized_probs[:,:,1] = probs[:,:,1]/(probs[:,:,0] + probs[:,:,1])
         ratProbs['normalized_probs'] = normalized_probs
 
+
         hit_rate = np.zeros(probs.shape[1])
         right = rat_data['valTrueY'][0,:] == 1
         left = rat_data['valTrueY'][0,:] == 0
         hit_rate[left] = normalized_probs[0,left,0]
         hit_rate[right] = normalized_probs[0,right,1]
         ratProbs['hit_rate'] = hit_rate
+
+        rat_choice = choices[ratname]
+        cpv = (rat_choice[0,:] == 2)
+        hit_trials = (rat_choice[0,:] == rat_data['valTrueY'][0,:])
+        hit = np.zeros(rat_choice.shape[1])
+        hit[hit_trials] = 1
+        hit[cpv] = np.nan
+        ratProbs['hit'] = hit
+        accuracy_exclude_cpv = np.nanmean(hit)
+        ratProbs['accuracy_exclude_cpv'] = accuracy_exclude_cpv
 
         T = rat_data['valX'].shape[1]
 
@@ -202,52 +221,78 @@ def postProcess(probabilities, allRatsData, trial_window = 3):
 
         p2a_prob = calculatePerformance(p2a_switch, hit_rate, trial_window)
         a2p_prob = calculatePerformance(a2p_switch, hit_rate, trial_window)
+        p2a_prob2 = calculatePerformance(p2a_switch, hit, trial_window)
+        a2p_prob2 = calculatePerformance(a2p_switch, hit, trial_window)
 
         ratProbs['p2a_prob'] = p2a_prob
         ratProbs['a2p_prob'] = a2p_prob
+        ratProbs['p2a_prob2'] = p2a_prob2
+        ratProbs['a2p_prob2'] = a2p_prob2
 
     return postRNNdata
 
 def calculatePerformance(switch_index, hit_rate, trial_window):
-    switch_prob = np.zeros(trial_window*2+1) 
     # index i --> trial from switch = -trial_window + i
-    for i in switch_index:
-        switch_prob += hit_rate[i-trial_window:i+trial_window+1]
-    switch_prob /= len(switch_index)
+    switch_matrix = np.zeros((len(switch_index), trial_window * 2 + 1))
+    for i in xrange(len(switch_index)):
+        switch_matrix[i,:] = hit_rate[(switch_index[i] - trial_window): (switch_index[i] + trial_window + 1)]
+    switch_prob = np.nanmean(switch_matrix,axis=0)
+    # index i --> trial from switch = -trial_window + i
+
     return switch_prob
 
 def meanPerformance(postRNNdata):
     size = postRNNdata[postRNNdata.keys()[0]]['p2a_prob'].shape[0]
     p2a_mean = np.zeros(size)
     a2p_mean = np.zeros(size)
+    p2a_mean2 = np.zeros(size)
+    a2p_mean2 = np.zeros(size)
     for ratname in postRNNdata.keys():
         p2a_mean += postRNNdata[ratname]['p2a_prob']
         a2p_mean += postRNNdata[ratname]['a2p_prob']
+        p2a_mean2 += postRNNdata[ratname]['p2a_prob2']
+        a2p_mean2 += postRNNdata[ratname]['a2p_prob2']
     p2a_mean /= len(postRNNdata)
     a2p_mean /= len(postRNNdata)
-    return p2a_mean, a2p_mean
+    p2a_mean2 /= len(postRNNdata)
+    a2p_mean2 /= len(postRNNdata)
+    return p2a_mean, a2p_mean, p2a_mean2, a2p_mean2
 
-def realRatMeanPerformance(preData, postRNNdata, trial_window = 3):
+def realRatMeanPerformance(preData, trial_window = 3):
     normalizedY = {}
     for ratname in preData.keys():
         rat = preData[ratname]
         normalizedY[ratname] = {}
-        cpv = (rat['valY'][0,:] == 2)
-        hit_trials = (rat['valY'][0,:] == rat['valTrueY'][0,:])
-        hit = np.zeros(rat['valY'].shape[1])
+        cpv = (rat['y'][0,:] == 2)
+        hit_trials = (rat['y'][0,:] == rat['trueY'][0,:])
+        hit = np.zeros(rat['y'].shape[1])
         hit[hit_trials] = 1
         hit[cpv] = np.nan
+        normalized_accuracy = np.nanmean(hit)
 
         normalizedY[ratname]['hit'] = hit
+        normalizedY[ratname]['normalized_accuracy'] = normalized_accuracy
 
-        p2a_switch = postRNNdata[ratname]['p2a_switch']
+        T = rat['X'].shape[1]
+
+        p2a_switch = []
+        a2p_switch = []
+        pro_rule = rat['X'][0,0,0]
+        for i in xrange(T):
+            if rat['X'][0,i,0] != pro_rule:
+                pro_rule = rat['X'][0,i,0]
+                if i > trial_window and i < T - trial_window:
+                    if pro_rule == 0:
+                        p2a_switch.append(i)
+                    else:
+                        a2p_switch.append(i)
+
         p2a_matrix = np.zeros((len(p2a_switch), trial_window * 2 + 1))
         for i in xrange(len(p2a_switch)):
             p2a_matrix[i,:] = hit[(p2a_switch[i] - trial_window): (p2a_switch[i] + trial_window + 1)]
         p2a = np.nanmean(p2a_matrix,axis=0)
         normalizedY[ratname]['p2a'] = p2a
 
-        a2p_switch = postRNNdata[ratname]['a2p_switch']
         a2p_matrix = np.zeros((len(a2p_switch), trial_window * 2 + 1))
         for i in xrange(len(a2p_switch)):
             a2p_matrix[i,:] = hit[(a2p_switch[i] - trial_window): (a2p_switch[i] + trial_window + 1)]
@@ -263,8 +308,7 @@ def realRatMeanPerformance(preData, postRNNdata, trial_window = 3):
     p2a_mean /= len(normalizedY)
     a2p_mean /= len(normalizedY)
 
-    return p2a_mean, a2p_mean
-
+    return p2a_mean, a2p_mean, normalizedY
 
 def affine_forward(x, w, b):
     """
