@@ -57,15 +57,17 @@ class RNNsolver(object):
         self.model = model
         self.X = X
         self.y = y
-
+        self.session = np.where(self.X[0,:,2]==1)[0]
         # Unpack keyword arguments
         self.update_rule = kwargs.pop('update_rule', 'sgd')
         self.optim_config = kwargs.pop('optim_config', {})
         self.lr_decay = kwargs.pop('lr_decay', 1.0)
         self.batch_size = kwargs.pop('batch_size', 1)
+        if self.batch_size > self.session.shape[0]:
+            self.batch_size = self.session.shape[0]
         self.num_epochs = kwargs.pop('num_epochs', 500)
 
-        self.print_every = kwargs.pop('print_every', 10)
+        self.print_every = kwargs.pop('print_every', self.session.shape[0])
         self.verbose = kwargs.pop('verbose', True)
 
         # Throw an error if there are extra keyword arguments
@@ -78,7 +80,6 @@ class RNNsolver(object):
         if not hasattr(optim, self.update_rule):
             raise ValueError('Invalid update_rule "%s"' % self.update_rule)
         self.update_rule = getattr(optim, self.update_rule)
-
         self._reset()
 
     def _reset(self):
@@ -101,15 +102,36 @@ class RNNsolver(object):
             d = {k: v for k, v in self.optim_config.iteritems()}
             self.optim_configs[p] = d
 
-    def _step(self):
+    def _chooseXy(self, j):
+        """
+        A method to choose proper X and y to train.
+
+        Inputs:
+        j: int, index of session.
+
+        Returns:
+        X: numpy array
+        y: numpy array
+        """
+        start = self.session[j * self.batch_size]
+        if (j+1)*self.batch_size + 1 <= self.session.shape[0] - 1:
+            end = self.session[(j+1) * self.batch_size + 1]
+        else:
+            end = self.X.shape[1]
+        X = self.X[:, start: end,:]
+        y = self.y[:, start: end]
+
+        return X, y
+
+    def _step(self, X, y):
         """
         Make a single gradient update. This is called by train() and should not
         be called manually.
         """
 
         # Compute loss and gradient
-        loss, grads = self.model.loss(self.X, self.y) 
-        average_loss = loss / self.y.shape[1]
+        loss, grads = self.model.loss(X, y) 
+        average_loss = loss / y.shape[1]
         self.loss_history.append(loss)
         self.average_loss_history.append(average_loss)
         # Perform a parameter update
@@ -124,23 +146,25 @@ class RNNsolver(object):
         """
         Run optimization to train the model.
         """
-        num_train = self.X.shape[0]
+        num_train = self.session.shape[0]
         iterations_per_epoch = max(num_train / self.batch_size, 1)
         num_iterations = self.num_epochs * iterations_per_epoch
+        for i in xrange(self.num_epochs):
+            for j in xrange(iterations_per_epoch):
+                t = i * self.num_epochs + j
+                X, y = self._chooseXy(j)
+                self._step(X,y)
 
-        for t in xrange(num_iterations):
-            self._step()
+                # Maybe print training loss
+                if self.verbose and j==0:
+                    print '(Epoch %d / %d) loss: %f, average loss: %f' % (
+                        i+1, self.num_epochs, self.loss_history[-1], 
+                        self.average_loss_history[-1])
 
-            # Maybe print training loss
-            if self.verbose and t % self.print_every == 0:
-                print '(Iteration %d / %d) loss: %f, average loss: %f' % (
-                    t + 1, num_iterations, self.loss_history[-1], 
-                    self.average_loss_history[-1])
-
-            # At the end of every epoch, increment the epoch counter and decay the
-            # learning rate.
-            epoch_end = (t + 1) % iterations_per_epoch == 0
-            if epoch_end:
-                self.epoch += 1
-                for k in self.optim_configs:
-                    self.optim_configs[k]['learning_rate'] *= self.lr_decay
+                # At the end of every epoch, increment the epoch counter and decay the
+                # learning rate.
+                epoch_end = (t + 1) % iterations_per_epoch == 0
+                if epoch_end:
+                    self.epoch += 1
+                    for k in self.optim_configs:
+                        self.optim_configs[k]['learning_rate'] *= self.lr_decay
