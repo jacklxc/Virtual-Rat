@@ -1,5 +1,6 @@
 from helpers import DBUtilsClass as db
 from Rat import Rat
+import random
 import numpy as np
 import cPickle as pkl
 import matplotlib.pyplot as plt
@@ -40,13 +41,17 @@ def getData(num_rats=15):
         print rat[0], data.shape
     return allRatsData
 
-def downloadRNN(rnid):
+def downloadRNN(rnid): # Problematic!!!
     CONN = db.Connection()
     CONN.use('vrat')
-    out = zip(*CONN.query('explain rnn'))
+#    out = zip(*CONN.query('explain rnn'))
+# That line did nothing.
     RNNs = CONN.query('select distinct(rnid) from vrat.rnn')
-    sqlstr = ('select ratname, hidden_dim, batch_size, learning_rate, model, rat')
-    RNN = CONN.query(sqlstr, (str(rnid),))
+ # You would only do this if you wanted all the RNN? Also the distinct is not necessary since rnid is unique in vrat.rnn.    
+    sqlstr = ('select ratname, hidden_dim, batch_size, learning_rate, model, rat from vrat.rnn where rnid = %s')
+    # what table did you store this information in? D
+    RNN = CONN.query(sqlstr, (rnid,))
+    # This will give you a tuple of len 7
     print type(RNN)
     return RNN
 
@@ -295,9 +300,30 @@ def draw_3d(real_p2a, real_a2p, p2a, a2p, p2a2 = None, a2p2 = None,
     plt.scatter(range(trial_window+1), real_p2a[trial_window:], color='r')
     plt.scatter(range(trial_window+1), real_a2p[trial_window:], color='b')
 
-    plt.legend([p2aplot, a2pplot, realp2aplot, reala2pplot],["RNN pro","RNN anti"
-        ,"Real pro", "Real anti"])
+    plt.legend([p2aplot, a2pplot],["pro","anti"])
     plt.xlabel('Trial from switch')
     plt.ylabel('Probability of correct')
     plt.title('Performance around switches')
+<<<<<<< HEAD
     plt.show()
+
+def generateTrials(block_length,block_num):
+	T = block_length * block_num
+	X = np.zeros((1, T, 3), dtype = np.int8)
+	y = np.zeros((1,T), dtype = np.int8)
+
+	for i in xrange(T):
+		quotient = i / block_length
+		if quotient % 2 == 0:
+			X[0,i,0] = 1
+		else:
+			X[0,i,0] = 0
+		X[0,i,1] = random.randint(0,1)
+	y[0,:] = np.logical_not(np.bitwise_xor(X[0,:,0],X[0,:,1]))
+
+	return X, y
+
+
+=======
+    plt.show()
+>>>>>>> fa42973a41176f40178e3b96853cefe1ddf78cc2
