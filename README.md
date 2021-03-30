@@ -1,6 +1,8 @@
 # Virtual Rat
 ##### Virtual Rat project is a computaional neuroscience project  conducted by Xiangci Li as a research assistant at Erlich lab under the guidance of New York University Shanghai Professor Jeffrey Erlich. We showed that the task switch cost of rat's ProAnti orienting task can be modeled by an Elman Recurrent Neural Network. The experimental data are from Dr. Carlos Brody's lab at Princeton.
 
+There is a [video](https://www.youtube.com/watch?v=Xs9DYRXQxNg&t=1s) available for this project!
+
 For any question, please contact
 ##### Xiangci Li (xiangci.li@nyu.edu)
 ##### Jeffrey Erlich (jerlich@nyu.edu)
